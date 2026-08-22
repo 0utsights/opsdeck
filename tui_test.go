@@ -3,7 +3,6 @@ package main
 import (
 	"strings"
 	"testing"
-	"time"
 )
 
 func TestBarHasStableWidth(t *testing.T) {
@@ -29,24 +28,26 @@ func TestTruncateUsesEllipsis(t *testing.T) {
 	}
 }
 
-func TestPageRegistryAndRotation(t *testing.T) {
-	if len(pageDefinitions) != 2 || pageDefinitions[0].name != "OVERVIEW" || pageDefinitions[1].name != "FLEET" {
-		t.Fatalf("unexpected page registry: %#v", pageDefinitions)
+func TestSitePlacementAndMigrationStatus(t *testing.T) {
+	site := SiteConfig{ID: "site", Name: "SITE", ContainerPatterns: []string{"site-web", "site-api"}}
+	a := &app{
+		cfg:   Config{Sites: []SiteConfig{site}},
+		sites: []SiteState{{Config: site, Online: true}},
+		servers: []ServerState{
+			{Config: ServerConfig{ID: "source"}, Online: true, Probe: Probe{Containers: []ContainerInfo{{Name: "site-web-1"}}}},
+			{Config: ServerConfig{ID: "target"}, Online: true, Probe: Probe{Containers: []ContainerInfo{{Name: "site-api"}}}},
+		},
 	}
-	start := time.Unix(1_700_000_000, 0)
-	a := &app{cfg: Config{PageSeconds: 20}, pageChangedAt: start}
-	if a.maybeRotatePage(start.Add(19 * time.Second)) {
-		t.Fatal("page rotated before interval")
+	if got := a.sitesOnServer(a.servers[0]); len(got) != 1 || got[0].containers != 1 {
+		t.Fatalf("unexpected hosted sites: %#v", got)
 	}
-	if !a.maybeRotatePage(start.Add(20*time.Second)) || a.pageIndex != 1 || a.focus != 1 {
-		t.Fatalf("page did not rotate into fleet: page=%d focus=%d", a.pageIndex, a.focus)
+	status, _ := a.migrationStatus(Migration{SiteID: "site", FromServer: "source", ToServer: "target"})
+	if status != "MIRRORED" {
+		t.Fatalf("migration status = %q, want MIRRORED", status)
 	}
-	a.pagePaused = true
-	if a.maybeRotatePage(start.Add(40 * time.Second)) {
-		t.Fatal("paused page rotation advanced")
-	}
-	a.setPage(-1, start)
-	if a.pageIndex != len(pageDefinitions)-1 {
-		t.Fatalf("negative page index did not wrap: %d", a.pageIndex)
+	a.servers[0].Probe.Containers = nil
+	status, _ = a.migrationStatus(Migration{SiteID: "site", FromServer: "source", ToServer: "target"})
+	if status != "MOVED" {
+		t.Fatalf("migration status = %q, want MOVED", status)
 	}
 }

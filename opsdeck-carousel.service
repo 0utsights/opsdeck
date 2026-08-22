@@ -1,0 +1,11 @@
+[Unit]
+Description=Rotate configured terminal dashboards in tmux
+
+[Service]
+Type=simple
+ExecStart=%h/.local/bin/opsdeck-carousel
+Restart=always
+RestartSec=3
+
+[Install]
+WantedBy=default.target

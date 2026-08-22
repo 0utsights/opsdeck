@@ -1,6 +1,5 @@
 {
   "refresh_seconds": 3,
-  "page_seconds": 20,
   "agents_dir": "~/.local/state/opsdeck/agents",
   "workflows_file": "~/.local/state/opsdeck/workflows.json",
   "servers": [
@@ -18,12 +17,21 @@
       "identity_file": "~/.ssh/opsdeck_probe",
       "probe_path": "/usr/local/bin/opsdeck",
       "sudo": true
-    },
+    }
+  ],
+  "sites": [
     {
-      "id": "public-service",
-      "name": "PUBLIC SERVICE",
-      "kind": "http",
-      "url": "https://example.com/health"
+      "id": "example-site",
+      "name": "EXAMPLE SITE",
+      "url": "https://example.com/health",
+      "container_patterns": ["example-web", "example-api"]
+    }
+  ],
+  "migrations": [
+    {
+      "site_id": "example-site",
+      "from_server": "local",
+      "to_server": "remote-vps"
     }
   ]
 }

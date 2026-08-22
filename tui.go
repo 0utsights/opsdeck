@@ -14,6 +14,7 @@ import (
 type app struct {
 	cfg           Config
 	servers       []ServerState
+	sites         []SiteState
 	agents        []AgentState
 	workflows     WorkflowFile
 	focus         int
@@ -25,20 +26,6 @@ type app struct {
 	message       string
 	lastRefresh   time.Time
 	refreshActive bool
-	pageIndex     int
-	pagePaused    bool
-	pageChangedAt time.Time
-}
-
-type pageDefinition struct {
-	name  string
-	focus int
-	draw  func(*app, tcell.Screen, int, int)
-}
-
-var pageDefinitions = []pageDefinition{
-	{name: "OVERVIEW", focus: -1, draw: drawOverviewPage},
-	{name: "FLEET", focus: 1, draw: drawFleetPage},
 }
 
 var palette = struct {
@@ -52,38 +39,7 @@ var palette = struct {
 }
 
 func newApp(cfg Config) *app {
-	return &app{cfg: cfg, workflows: loadWorkflows(cfg.WorkflowsFile), pageChangedAt: time.Now()}
-}
-
-func (a *app) setPage(index int, now time.Time) {
-	if len(pageDefinitions) == 0 {
-		return
-	}
-	a.pageIndex = (index%len(pageDefinitions) + len(pageDefinitions)) % len(pageDefinitions)
-	if pageDefinitions[a.pageIndex].focus >= 0 {
-		a.focus = pageDefinitions[a.pageIndex].focus
-	}
-	a.pageChangedAt = now
-}
-
-func (a *app) maybeRotatePage(now time.Time) bool {
-	if a.pagePaused || a.adding || len(pageDefinitions) < 2 {
-		return false
-	}
-	interval := time.Duration(a.cfg.PageSeconds) * time.Second
-	if now.Sub(a.pageChangedAt) < interval {
-		return false
-	}
-	a.setPage(a.pageIndex+1, now)
-	return true
-}
-
-func (a *app) pageRemaining(now time.Time) int {
-	remaining := time.Duration(a.cfg.PageSeconds)*time.Second - now.Sub(a.pageChangedAt)
-	if remaining <= 0 {
-		return 0
-	}
-	return int((remaining + time.Second - 1) / time.Second)
+	return &app{cfg: cfg, workflows: loadWorkflows(cfg.WorkflowsFile)}
 }
 
 func (a *app) refresh(ctx context.Context) {
@@ -112,13 +68,36 @@ func (a *app) refresh(ctx context.Context) {
 		states[r.i] = r.s
 	}
 	a.servers = states
+	siteCh := make(chan SiteState, len(a.cfg.Sites))
+	for _, cfg := range a.cfg.Sites {
+		go func(cfg SiteConfig) {
+			if cfg.URL == "" {
+				siteCh <- SiteState{Config: cfg, Online: true}
+				return
+			}
+			state := collectServer(ctx, ServerConfig{ID: cfg.ID, Name: cfg.Name, Kind: "http", URL: cfg.URL})
+			siteCh <- SiteState{Config: cfg, Online: state.Online, HTTPStatus: state.HTTPStatus, Latency: state.Latency, Error: state.Error}
+		}(cfg)
+	}
+	sites := make([]SiteState, 0, len(a.cfg.Sites))
+	for range a.cfg.Sites {
+		sites = append(sites, <-siteCh)
+	}
+	a.sites = a.sites[:0]
+	for _, cfg := range a.cfg.Sites {
+		for _, state := range sites {
+			if state.Config.ID == cfg.ID {
+				a.sites = append(a.sites, state)
+				break
+			}
+		}
+	}
 	a.agents = loadAgents(a.cfg.AgentsDir)
 	a.workflows = loadWorkflows(a.cfg.WorkflowsFile)
 	a.lastRefresh = time.Now()
 }
 
 func (a *app) handleKey(e *tcell.EventKey) bool {
-	a.pageChangedAt = time.Now()
 	if a.adding {
 		switch e.Key() {
 		case tcell.KeyEscape:
@@ -154,26 +133,12 @@ func (a *app) handleKey(e *tcell.EventKey) bool {
 		a.move(-1)
 	case tcell.KeyDown:
 		a.move(1)
-	case tcell.KeyLeft:
-		a.setPage(a.pageIndex-1, time.Now())
-	case tcell.KeyRight:
-		a.setPage(a.pageIndex+1, time.Now())
 	}
 	switch e.Rune() {
 	case 'j':
 		a.move(1)
 	case 'k':
 		a.move(-1)
-	case '[':
-		a.setPage(a.pageIndex-1, time.Now())
-	case ']':
-		a.setPage(a.pageIndex+1, time.Now())
-	case 'p':
-		a.pagePaused = !a.pagePaused
-		a.message = "page rotation resumed"
-		if a.pagePaused {
-			a.message = "page rotation paused"
-		}
 	case 'a':
 		if a.focus == 2 {
 			a.adding = true
@@ -227,7 +192,7 @@ func (a *app) draw(s tcell.Screen) {
 
 	drawHeader(s, w, a)
 	contentY, contentH := 2, h-4
-	pageDefinitions[a.pageIndex].draw(a, s, contentY, contentH)
+	drawOverviewPage(a, s, contentY, contentH)
 	drawFooter(s, w, h, a)
 	s.Show()
 }
@@ -266,12 +231,6 @@ func drawOverviewPage(a *app, s tcell.Screen, contentY, contentH int) {
 	}
 }
 
-func drawFleetPage(a *app, s tcell.Screen, contentY, contentH int) {
-	w, _ := s.Size()
-	drawBox(s, 0, contentY, w, contentH, " SERVER FLEET ", true)
-	a.drawServers(s, 1, contentY+1, w-2, contentH-2)
-}
-
 func drawHeader(s tcell.Screen, w int, a *app) {
 	style := tcell.StyleDefault.Background(palette.bg).Foreground(palette.text)
 	put(s, 1, 0, " OPSDECK ", style.Background(palette.cyan).Foreground(palette.bg).Bold(true), 11)
@@ -281,25 +240,14 @@ func drawHeader(s tcell.Screen, w int, a *app) {
 			online++
 		}
 	}
+	put(s, 14, 0, fmt.Sprintf("%d/%d servers  |  %d agents", online, len(a.servers), len(a.agents)), style.Foreground(palette.muted), w-38)
 	clock := time.Now().Format("Mon 15:04:05")
-	rotation := fmt.Sprintf("%ds", a.pageRemaining(time.Now()))
-	if a.pagePaused {
-		rotation = "PAUSED"
-	}
-	page := pageDefinitions[a.pageIndex]
-	pageLabel := fmt.Sprintf("%d/%d %s %s", a.pageIndex+1, len(pageDefinitions), page.name, rotation)
-	pageX := w - len(clock) - len(pageLabel) - 5
-	put(s, 14, 0, fmt.Sprintf("%d/%d servers  |  %d agents", online, len(a.servers), len(a.agents)), style.Foreground(palette.muted), max(0, pageX-15))
-	put(s, pageX, 0, pageLabel, style.Foreground(palette.cyan), len(pageLabel))
 	put(s, w-len(clock)-2, 0, clock, style.Foreground(palette.purple), len(clock))
 }
 
 func drawFooter(s tcell.Screen, w, h int, a *app) {
 	style := tcell.StyleDefault.Background(palette.bg).Foreground(palette.muted)
-	hint := "[left/right] page  [p] pause  [tab] panel  [j/k] move  [space] toggle  [a] add workflow  [q] quit"
-	if w < 120 {
-		hint = "[←/→] page  [p] pause  [tab] panel  [j/k] move  [q] quit"
-	}
+	hint := "[tab] panel  [j/k] move  [space] toggle  [a] add workflow  [q] quit"
 	if a.adding {
 		hint = "new workflow › " + a.input + "█   [enter] save  [esc] cancel"
 	} else if a.message != "" {
@@ -338,6 +286,80 @@ func (a *app) drawAgents(s tcell.Screen, x, y, w, h int) {
 		put(s, cx+2, y+2, "* "+status, style.Foreground(statusColor), cw-4)
 		put(s, cx+2, y+4, truncate(ag.Task, cw-4), style.Foreground(palette.muted), cw-4)
 		put(s, cx+2, y+max(5, h-2), truncate(ag.Model, cw-4), style.Foreground(palette.purple), cw-4)
+	}
+}
+
+type hostedSite struct {
+	state      SiteState
+	containers int
+}
+
+func siteMatchesContainer(site SiteConfig, containerName string) bool {
+	name := strings.ToLower(containerName)
+	for _, pattern := range site.ContainerPatterns {
+		if pattern != "" && strings.Contains(name, strings.ToLower(pattern)) {
+			return true
+		}
+	}
+	return false
+}
+
+func (a *app) sitesOnServer(server ServerState) []hostedSite {
+	result := make([]hostedSite, 0)
+	for _, site := range a.sites {
+		count := 0
+		for _, container := range server.Probe.Containers {
+			if siteMatchesContainer(site.Config, container.Name) {
+				count++
+			}
+		}
+		if count > 0 {
+			result = append(result, hostedSite{state: site, containers: count})
+		}
+	}
+	return result
+}
+
+func (a *app) serverHasSite(serverID, siteID string) bool {
+	for _, server := range a.servers {
+		if server.Config.ID != serverID || !server.Online {
+			continue
+		}
+		for _, site := range a.cfg.Sites {
+			if site.ID != siteID {
+				continue
+			}
+			for _, container := range server.Probe.Containers {
+				if siteMatchesContainer(site, container.Name) {
+					return true
+				}
+			}
+		}
+	}
+	return false
+}
+
+func (a *app) siteName(id string) string {
+	for _, site := range a.cfg.Sites {
+		if site.ID == id {
+			return site.Name
+		}
+	}
+	return id
+}
+
+func (a *app) migrationStatus(migration Migration) (string, tcell.Color) {
+	from := a.serverHasSite(migration.FromServer, migration.SiteID)
+	to := a.serverHasSite(migration.ToServer, migration.SiteID)
+	switch {
+	case from && to:
+		return "MIRRORED", palette.cyan
+	case to:
+		return "MOVED", palette.green
+	case from:
+		return "SOURCE ONLY", palette.yellow
+	default:
+		return "MISSING", palette.red
 	}
 }
 
@@ -407,16 +429,38 @@ func (a *app) drawServers(s tcell.Screen, x, y, w, h int) {
 		if ch >= 16 {
 			put(s, cx+2, cy+14, fmt.Sprintf("tx %s | rx %s", rate(server.Probe.NetTxBytesSec), rate(server.Probe.NetRxBytesSec)), style.Foreground(palette.muted), cw-4)
 		}
-		if ch >= 19 && len(server.Probe.Containers) > 0 {
-			put(s, cx+2, cy+16, "CONTAINERS", style.Foreground(palette.cyan).Bold(true), cw-4)
-			limit := min(len(server.Probe.Containers), ch-18)
+		nextRow := 16
+		hostedSites := a.sitesOnServer(server)
+		if ch >= 19 && len(hostedSites) > 0 {
+			put(s, cx+2, cy+nextRow, "SITES", style.Foreground(palette.purple).Bold(true), cw-4)
+			nextRow++
+			limit := min(len(hostedSites), ch-nextRow-1)
+			for j := 0; j < limit; j++ {
+				site := hostedSites[j]
+				mark, siteColor := "●", palette.green
+				if !site.state.Online {
+					mark, siteColor = "×", palette.red
+				}
+				detail := fmt.Sprintf("%d ctr", site.containers)
+				if site.state.Config.URL != "" {
+					detail = fmt.Sprintf("%d ctr | %d %dms", site.containers, site.state.HTTPStatus, site.state.Latency.Milliseconds())
+				}
+				line := fmt.Sprintf("%s %s  %s", mark, site.state.Config.Name, detail)
+				put(s, cx+2, cy+nextRow+j, truncate(line, cw-4), style.Foreground(siteColor), cw-4)
+			}
+			nextRow += limit + 1
+		}
+		if ch > nextRow+2 && len(server.Probe.Containers) > 0 {
+			put(s, cx+2, cy+nextRow, "CONTAINERS", style.Foreground(palette.cyan).Bold(true), cw-4)
+			nextRow++
+			limit := min(len(server.Probe.Containers), ch-nextRow-1)
 			for j := 0; j < limit; j++ {
 				container := server.Probe.Containers[j]
 				mark, containerColor := "●", palette.green
 				if container.Health == "unhealthy" || strings.Contains(strings.ToLower(container.Status), "exited") {
 					mark, containerColor = "×", palette.red
 				}
-				put(s, cx+2, cy+17+j, mark+" "+truncate(container.Name, cw-6), style.Foreground(containerColor), cw-4)
+				put(s, cx+2, cy+nextRow+j, mark+" "+truncate(container.Name, cw-6), style.Foreground(containerColor), cw-4)
 			}
 		}
 	}
@@ -435,6 +479,19 @@ func (a *app) drawWorkflows(s tcell.Screen, x, y, w, h int) {
 		put(s, x+1, y+1, bar(100*float64(done)/float64(len(a.workflows.Items)), max(4, w-5)), style.Foreground(palette.purple), w-2)
 	}
 	startY := y + 3
+	if len(a.cfg.Migrations) > 0 && h >= len(a.cfg.Migrations)+8 {
+		put(s, x+1, startY, "HOST MOVES", style.Foreground(palette.cyan).Bold(true), w-2)
+		startY++
+		for _, migration := range a.cfg.Migrations {
+			status, color := a.migrationStatus(migration)
+			line := fmt.Sprintf(" ● %s  %s", a.siteName(migration.SiteID), status)
+			put(s, x, startY, pad(truncate(line, w), w), style.Foreground(color), w)
+			startY++
+		}
+		startY++
+		put(s, x+1, startY, "TASKS", style.Foreground(palette.purple).Bold(true), w-2)
+		startY++
+	}
 	for i, item := range a.workflows.Items {
 		if startY+i >= y+h {
 			break

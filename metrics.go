@@ -57,6 +57,14 @@ type ServerState struct {
 	LastUpdated time.Time
 }
 
+type SiteState struct {
+	Config     SiteConfig
+	Online     bool
+	HTTPStatus int
+	Latency    time.Duration
+	Error      string
+}
+
 type AgentState struct {
 	ID        string    `json:"id"`
 	Name      string    `json:"name"`

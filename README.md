@@ -6,14 +6,13 @@ the TUI and remote metrics probe; there is no web server or metrics database.
 
 ## Layout
 
-- **Overview page**: the original AI-agent, server, and workflow dashboard.
-- **Fleet page**: a full-screen server and container view. OpsDeck rotates between
-  pages every 20 seconds by default; `page_seconds` controls the interval.
 - **AI agents**: heartbeat cards read from `~/.local/state/opsdeck/agents/*.json`.
-- **Servers**: local or SSH CPU, memory, disk, network, container health, and small
-  history graphs. HTTP-only services can be included as availability cards.
-- **Workflows**: a persistent to-do queue. Press `a` to add an item and `space` to
-  toggle completion.
+- **Servers**: local or SSH CPU, memory, disk, network, container health, sites, and
+  small history graphs.
+- **Sites**: configured container-name patterns place each site beneath every host
+  currently running it. Moving containers moves the site on the next refresh.
+- **Workflows**: a persistent to-do queue plus live host-migration states derived
+  from container placement.
 
 The layout switches from the sketch's two-column composition to stacked panels on
 smaller terminals. It follows btop's dense boxes, restrained theme, keyboard focus,
@@ -27,8 +26,6 @@ high-contrast colors that remain readable on a physical Linux console. Color rem
 
 | Key | Action |
 | --- | --- |
-| `left` / `right`, `[` / `]` | Change page and reset its timer |
-| `p` | Pause or resume automatic page rotation |
 | `tab` / `shift-tab` | Change panel |
 | `j` / `k`, arrows | Move selection |
 | `space` | Toggle selected workflow |
@@ -72,8 +69,43 @@ opsdeck
 ```
 
 The installer creates a private user configuration at
-`~/.config/opsdeck/config.json`. Edit that file to define local, SSH, and HTTP
-targets. Runtime state stays under `~/.local/state/opsdeck` and is never committed.
+`~/.config/opsdeck/config.json`. Edit that file to define local and SSH hosts,
+site health checks, container matching, and migrations. Runtime state stays under
+`~/.local/state/opsdeck` and is never committed.
+Site names, URLs, container patterns, SSH addresses, usernames, and migration plans
+belong only in this private configuration; the repository ships generic examples.
+
+## Rotate independent TUIs
+
+`opsdeck-carousel` keeps independent terminal applications running in separate tmux
+windows and rotates the session between them. Edit the private configuration at
+`~/.config/opsdeck/carousel.conf`:
+
+```ini
+interval_seconds=20
+session_name=opsdeck
+window=opsdeck|opsdeck
+window=system-monitor|btop
+window=project-tui|your-project-command
+```
+
+Then enable the user service:
+
+```sh
+systemctl --user daemon-reload
+systemctl --user enable --now opsdeck-carousel.service
+```
+
+The carousel operates above the applications, so each TUI remains an independent
+process with its own keyboard handling and screen state. Add another `window=` line
+to extend the rotation.
+
+## Site placement and migration states
+
+Each `sites` entry maps one logical site to one or more container-name fragments.
+Each optional `migrations` entry names a source and target server ID. OpsDeck derives
+`SOURCE ONLY`, `MIRRORED`, `MOVED`, or `MISSING` directly from live Docker probes;
+there is no second placement database to keep synchronized.
 
 ## Remote probes
 

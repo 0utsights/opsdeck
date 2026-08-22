@@ -1,0 +1,78 @@
+#!/usr/bin/env bash
+set -Eeuo pipefail
+
+config_home=${XDG_CONFIG_HOME:-"$HOME/.config"}
+config_path=${1:-"$config_home/opsdeck/carousel.conf"}
+
+if [[ ! -r "$config_path" ]]; then
+  printf 'carousel config not found: %s\n' "$config_path" >&2
+  exit 1
+fi
+
+interval_seconds=20
+session_name=opsdeck
+declare -a window_names=()
+declare -a window_commands=()
+
+while IFS= read -r raw_line || [[ -n "$raw_line" ]]; do
+  line=${raw_line%$'\r'}
+  [[ -z "$line" || "$line" == \#* ]] && continue
+  case "$line" in
+    interval_seconds=*) interval_seconds=${line#*=} ;;
+    session_name=*) session_name=${line#*=} ;;
+    window=*)
+      spec=${line#*=}
+      name=${spec%%|*}
+      command=${spec#*|}
+      if [[ "$spec" == "$name" || -z "$name" || -z "$command" ]]; then
+        printf 'invalid window entry: %s\n' "$line" >&2
+        exit 1
+      fi
+      if [[ ! "$name" =~ ^[a-zA-Z0-9._-]+$ ]]; then
+        printf 'invalid tmux window name: %s\n' "$name" >&2
+        exit 1
+      fi
+      window_names+=("$name")
+      window_commands+=("$command")
+      ;;
+    *)
+      printf 'unknown carousel setting: %s\n' "$line" >&2
+      exit 1
+      ;;
+  esac
+done < "$config_path"
+
+if [[ ! "$interval_seconds" =~ ^[1-9][0-9]*$ ]]; then
+  printf 'interval_seconds must be a positive integer\n' >&2
+  exit 1
+fi
+if ((${#window_names[@]} < 2)); then
+  printf 'configure at least two carousel windows\n' >&2
+  exit 1
+fi
+
+window_exists() {
+  tmux list-windows -t "$session_name" -F '#{window_name}' 2>/dev/null | grep -Fqx -- "$1"
+}
+
+ensure_window() {
+  local index=$1
+  local name=${window_names[$index]}
+  local command=${window_commands[$index]}
+  if window_exists "$name"; then
+    return
+  fi
+  tmux new-window -d -t "$session_name" -n "$name" "$command"
+}
+
+if ! tmux has-session -t "$session_name" 2>/dev/null; then
+  tmux new-session -d -s "$session_name" -n "${window_names[0]}" "${window_commands[0]}"
+fi
+
+while true; do
+  for index in "${!window_names[@]}"; do
+    ensure_window "$index"
+    tmux select-window -t "$session_name:${window_names[$index]}"
+    sleep "$interval_seconds"
+  done
+done

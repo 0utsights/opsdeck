@@ -9,10 +9,24 @@ import (
 
 type Config struct {
 	RefreshSeconds int            `json:"refresh_seconds"`
-	PageSeconds    int            `json:"page_seconds"`
 	Servers        []ServerConfig `json:"servers"`
+	Sites          []SiteConfig   `json:"sites,omitempty"`
+	Migrations     []Migration    `json:"migrations,omitempty"`
 	AgentsDir      string         `json:"agents_dir"`
 	WorkflowsFile  string         `json:"workflows_file"`
+}
+
+type SiteConfig struct {
+	ID                string   `json:"id"`
+	Name              string   `json:"name"`
+	URL               string   `json:"url,omitempty"`
+	ContainerPatterns []string `json:"container_patterns"`
+}
+
+type Migration struct {
+	SiteID     string `json:"site_id"`
+	FromServer string `json:"from_server"`
+	ToServer   string `json:"to_server"`
 }
 
 type ServerConfig struct {
@@ -57,9 +71,6 @@ func loadConfig(path string) (Config, error) {
 	}
 	if cfg.RefreshSeconds < 1 {
 		cfg.RefreshSeconds = 3
-	}
-	if cfg.PageSeconds < 1 {
-		cfg.PageSeconds = 20
 	}
 	cfg.AgentsDir = expandHome(cfg.AgentsDir)
 	cfg.WorkflowsFile = expandHome(cfg.WorkflowsFile)
