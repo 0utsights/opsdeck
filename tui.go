@@ -31,7 +31,7 @@ var palette = struct {
 	bg, panel, border, muted, text, green, yellow, red, cyan, purple tcell.Color
 }{
 	bg: tcell.NewHexColor(0x000000), panel: tcell.NewHexColor(0x080b10),
-	border: tcell.NewHexColor(0x3a4658), muted: tcell.NewHexColor(0x8391a7),
+	border: tcell.NewHexColor(0x5f87af), muted: tcell.NewHexColor(0x8391a7),
 	text: tcell.NewHexColor(0xf2f4f8), green: tcell.NewHexColor(0x00ff87),
 	yellow: tcell.NewHexColor(0xffd75f), red: tcell.NewHexColor(0xff5f87),
 	cyan: tcell.NewHexColor(0x00d7ff), purple: tcell.NewHexColor(0xaf87ff),
@@ -171,6 +171,9 @@ func (a *app) draw(s tcell.Screen) {
 		rightW := clamp(w/3, 32, 44)
 		leftW := w - rightW - 1
 		agentH := clamp(contentH*36/100, 9, contentH-12)
+		if len(a.agents) == 0 {
+			agentH = 7
+		}
 		drawBox(s, 0, contentY, leftW, agentH, " AI AGENTS ", a.focus == 0)
 		a.drawAgents(s, 1, contentY+1, leftW-2, agentH-2)
 		drawBox(s, 0, contentY+agentH, leftW, contentH-agentH, " SERVERS ", a.focus == 1)
@@ -307,6 +310,9 @@ func (a *app) drawServers(s tcell.Screen, x, y, w, h int) {
 		if ch >= 13 {
 			put(s, cx+2, cy+11, "cpu "+spark(server.CPUHistory, max(4, cw-8)), style.Foreground(palette.cyan), cw-4)
 		}
+		if ch >= 14 {
+			put(s, cx+2, cy+12, "mem "+spark(server.MemHistory, max(4, cw-8)), style.Foreground(palette.purple), cw-4)
+		}
 		if ch >= 15 {
 			healthy := 0
 			for _, c := range server.Probe.Containers {
@@ -318,6 +324,18 @@ func (a *app) drawServers(s tcell.Screen, x, y, w, h int) {
 		}
 		if ch >= 16 {
 			put(s, cx+2, cy+14, fmt.Sprintf("tx %s | rx %s", rate(server.Probe.NetTxBytesSec), rate(server.Probe.NetRxBytesSec)), style.Foreground(palette.muted), cw-4)
+		}
+		if ch >= 19 && len(server.Probe.Containers) > 0 {
+			put(s, cx+2, cy+16, "CONTAINERS", style.Foreground(palette.cyan).Bold(true), cw-4)
+			limit := min(len(server.Probe.Containers), ch-18)
+			for j := 0; j < limit; j++ {
+				container := server.Probe.Containers[j]
+				mark, containerColor := "●", palette.green
+				if container.Health == "unhealthy" || strings.Contains(strings.ToLower(container.Status), "exited") {
+					mark, containerColor = "×", palette.red
+				}
+				put(s, cx+2, cy+17+j, mark+" "+truncate(container.Name, cw-6), style.Foreground(containerColor), cw-4)
+			}
 		}
 	}
 }
