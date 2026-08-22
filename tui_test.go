@@ -7,7 +7,7 @@ import (
 
 func TestBarHasStableWidth(t *testing.T) {
 	got := bar(50, 10)
-	if !strings.HasPrefix(got, "━━━━━─────") || !strings.HasSuffix(got, "  50%") {
+	if !strings.HasPrefix(got, "#####-----") || !strings.HasSuffix(got, "  50%") {
 		t.Fatalf("unexpected bar: %q", got)
 	}
 }
@@ -17,7 +17,7 @@ func TestSparkClampsAndPads(t *testing.T) {
 	if len([]rune(got)) != 5 {
 		t.Fatalf("spark width = %d, want 5", len([]rune(got)))
 	}
-	if !strings.HasSuffix(got, "▁▄█") {
+	if !strings.HasSuffix(got, " =@") {
 		t.Fatalf("unexpected spark: %q", got)
 	}
 }

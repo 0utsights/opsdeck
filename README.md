@@ -16,6 +16,10 @@ The layout switches from the sketch's two-column composition to stacked panels o
 smaller terminals. It follows btop's dense boxes, restrained theme, keyboard focus,
 and low-overhead native collection without copying btop source.
 
+All structural lines, usage bars, status marks, and history graphs use a straight
+ASCII symbol set so the interface renders consistently in Linux consoles, minimal
+terminal fonts, and SSH sessions. Color remains 24-bit when the terminal supports it.
+
 ## Controls
 
 | Key | Action |

@@ -26,6 +26,10 @@ type ContainerInfo struct {
 type Probe struct {
 	Hostname       string          `json:"hostname"`
 	Arch           string          `json:"arch"`
+	OSName         string          `json:"os_name"`
+	Kernel         string          `json:"kernel"`
+	CPUModel       string          `json:"cpu_model"`
+	CPUThreads     int             `json:"cpu_threads"`
 	CPUPercent     float64         `json:"cpu_percent"`
 	MemoryPercent  float64         `json:"memory_percent"`
 	MemoryUsed     uint64          `json:"memory_used"`
@@ -89,6 +93,10 @@ func collectLocalProbe() (Probe, error) {
 	var p Probe
 	host, _ := os.Hostname()
 	p.Hostname, p.Arch = host, runtime.GOARCH
+	p.OSName = readOSName()
+	p.Kernel = readFirstLine("/proc/sys/kernel/osrelease")
+	p.CPUModel = readCPUModel()
+	p.CPUThreads = runtime.NumCPU()
 	cpu1, _ := readCPU()
 	rx1, tx1 := readNetwork()
 	t0 := time.Now()
@@ -118,6 +126,53 @@ func collectLocalProbe() (Probe, error) {
 	p.Containers = readContainers()
 	p.CollectedAtUTC = time.Now().UTC()
 	return p, nil
+}
+
+func readFirstLine(path string) string {
+	b, err := os.ReadFile(path)
+	if err != nil {
+		return ""
+	}
+	return strings.TrimSpace(strings.SplitN(string(b), "\n", 2)[0])
+}
+
+func readOSName() string {
+	b, err := os.ReadFile("/etc/os-release")
+	if err != nil {
+		return runtime.GOOS
+	}
+	for _, line := range strings.Split(string(b), "\n") {
+		if strings.HasPrefix(line, "PRETTY_NAME=") {
+			return strings.Trim(strings.TrimPrefix(line, "PRETTY_NAME="), "\"")
+		}
+	}
+	return runtime.GOOS
+}
+
+func readCPUModel() string {
+	b, err := os.ReadFile("/proc/cpuinfo")
+	if err != nil {
+		return "unknown CPU"
+	}
+	for _, line := range strings.Split(string(b), "\n") {
+		parts := strings.SplitN(line, ":", 2)
+		if len(parts) != 2 {
+			continue
+		}
+		key := strings.TrimSpace(parts[0])
+		if key == "model name" || key == "Model" || key == "Hardware" {
+			return strings.TrimSpace(parts[1])
+		}
+	}
+	if b, err := exec.Command("lscpu").Output(); err == nil {
+		for _, line := range strings.Split(string(b), "\n") {
+			parts := strings.SplitN(line, ":", 2)
+			if len(parts) == 2 && strings.TrimSpace(parts[0]) == "Model name" {
+				return strings.TrimSpace(parts[1])
+			}
+		}
+	}
+	return runtime.GOARCH
 }
 
 type cpuStat struct{ idle, total uint64 }

@@ -30,11 +30,11 @@ type app struct {
 var palette = struct {
 	bg, panel, border, muted, text, green, yellow, red, cyan, purple tcell.Color
 }{
-	bg: tcell.NewHexColor(0x080b10), panel: tcell.NewHexColor(0x0d1117),
-	border: tcell.NewHexColor(0x344052), muted: tcell.NewHexColor(0x6b778d),
-	text: tcell.NewHexColor(0xd8dee9), green: tcell.NewHexColor(0x7bd88f),
-	yellow: tcell.NewHexColor(0xf6c177), red: tcell.NewHexColor(0xeb6f92),
-	cyan: tcell.NewHexColor(0x65d1d4), purple: tcell.NewHexColor(0xc4a7e7),
+	bg: tcell.NewHexColor(0x000000), panel: tcell.NewHexColor(0x080b10),
+	border: tcell.NewHexColor(0x3a4658), muted: tcell.NewHexColor(0x8391a7),
+	text: tcell.NewHexColor(0xf2f4f8), green: tcell.NewHexColor(0x00ff87),
+	yellow: tcell.NewHexColor(0xffd75f), red: tcell.NewHexColor(0xff5f87),
+	cyan: tcell.NewHexColor(0x00d7ff), purple: tcell.NewHexColor(0xaf87ff),
 }
 
 func newApp(cfg Config) *app {
@@ -201,7 +201,7 @@ func drawHeader(s tcell.Screen, w int, a *app) {
 			online++
 		}
 	}
-	put(s, 14, 0, fmt.Sprintf("%d/%d servers  •  %d agents", online, len(a.servers), len(a.agents)), style.Foreground(palette.muted), w-38)
+	put(s, 14, 0, fmt.Sprintf("%d/%d servers  |  %d agents", online, len(a.servers), len(a.agents)), style.Foreground(palette.muted), w-38)
 	clock := time.Now().Format("Mon 15:04:05")
 	put(s, w-len(clock)-2, 0, clock, style.Foreground(palette.purple), len(clock))
 }
@@ -240,7 +240,7 @@ func (a *app) drawAgents(s tcell.Screen, x, y, w, h int) {
 			status, statusColor = "STALE", palette.yellow
 		}
 		put(s, cx+2, y+1, truncate(ag.Name, cw-4), style.Bold(true), cw-4)
-		put(s, cx+2, y+2, "● "+status, style.Foreground(statusColor), cw-4)
+		put(s, cx+2, y+2, "* "+status, style.Foreground(statusColor), cw-4)
 		put(s, cx+2, y+4, truncate(ag.Task, cw-4), style.Foreground(palette.muted), cw-4)
 		put(s, cx+2, y+max(5, h-2), truncate(ag.Model, cw-4), style.Foreground(palette.purple), cw-4)
 	}
@@ -264,9 +264,9 @@ func (a *app) drawServers(s tcell.Screen, x, y, w, h int) {
 		cw, ch := min(cardW-1, x+w-cx), min(cardH, y+h-cy)
 		selected := a.focus == 1 && i == a.serverSel
 		drawMiniBox(s, cx, cy, cw, ch, selected)
-		color, dot := palette.green, "●"
+		color, dot := palette.green, "+"
 		if !server.Online {
-			color, dot = palette.red, "×"
+			color, dot = palette.red, "x"
 		}
 		put(s, cx+2, cy+1, dot+" "+truncate(server.Config.Name, cw-6), style.Foreground(color).Bold(true), cw-4)
 		if server.Config.Kind == "http" {
@@ -278,21 +278,30 @@ func (a *app) drawServers(s tcell.Screen, x, y, w, h int) {
 			put(s, cx+2, cy+3, truncate(server.Error, cw-4), style.Foreground(palette.red), cw-4)
 			continue
 		}
+		put(s, cx+2, cy+2, truncate(fmt.Sprintf("%s / %s", server.Probe.OSName, server.Probe.Arch), cw-4), style.Foreground(palette.muted), cw-4)
+		put(s, cx+2, cy+3, truncate(server.Probe.CPUModel, cw-4), style.Foreground(palette.purple), cw-4)
+		put(s, cx+2, cy+4, truncate(fmt.Sprintf("%d threads | %s RAM", server.Probe.CPUThreads, bytes(server.Probe.MemoryTotal)), cw-4), style.Foreground(palette.cyan), cw-4)
+		put(s, cx+2, cy+5, truncate(fmt.Sprintf("%s disk | up %s", bytes(server.Probe.DiskTotal), uptime(server.Probe.UptimeSeconds)), cw-4), style.Foreground(palette.cyan), cw-4)
 		barW := max(5, cw-13)
-		put(s, cx+2, cy+3, "CPU "+bar(server.Probe.CPUPercent, barW), style.Foreground(metricColor(server.Probe.CPUPercent)), cw-4)
-		put(s, cx+2, cy+4, "MEM "+bar(server.Probe.MemoryPercent, barW), style.Foreground(metricColor(server.Probe.MemoryPercent)), cw-4)
-		put(s, cx+2, cy+5, "DSK "+bar(server.Probe.DiskPercent, barW), style.Foreground(metricColor(server.Probe.DiskPercent)), cw-4)
-		if ch >= 9 {
-			put(s, cx+2, cy+7, "cpu "+spark(server.CPUHistory, max(4, cw-8)), style.Foreground(palette.cyan), cw-4)
-		}
 		if ch >= 11 {
+			put(s, cx+2, cy+7, "CPU "+bar(server.Probe.CPUPercent, barW), style.Foreground(metricColor(server.Probe.CPUPercent)), cw-4)
+			put(s, cx+2, cy+8, "MEM "+bar(server.Probe.MemoryPercent, barW), style.Foreground(metricColor(server.Probe.MemoryPercent)), cw-4)
+			put(s, cx+2, cy+9, "DSK "+bar(server.Probe.DiskPercent, barW), style.Foreground(metricColor(server.Probe.DiskPercent)), cw-4)
+		}
+		if ch >= 13 {
+			put(s, cx+2, cy+11, "cpu "+spark(server.CPUHistory, max(4, cw-8)), style.Foreground(palette.cyan), cw-4)
+		}
+		if ch >= 15 {
 			healthy := 0
 			for _, c := range server.Probe.Containers {
 				if c.Health != "unhealthy" {
 					healthy++
 				}
 			}
-			put(s, cx+2, cy+9, fmt.Sprintf("%d/%d containers  ↑%s ↓%s", healthy, len(server.Probe.Containers), rate(server.Probe.NetTxBytesSec), rate(server.Probe.NetRxBytesSec)), style.Foreground(palette.muted), cw-4)
+			put(s, cx+2, cy+13, fmt.Sprintf("%d/%d containers", healthy, len(server.Probe.Containers)), style.Foreground(palette.muted), cw-4)
+		}
+		if ch >= 16 {
+			put(s, cx+2, cy+14, fmt.Sprintf("tx %s | rx %s", rate(server.Probe.NetTxBytesSec), rate(server.Probe.NetRxBytesSec)), style.Foreground(palette.muted), cw-4)
 		}
 	}
 }
@@ -319,9 +328,9 @@ func (a *app) drawWorkflows(s tcell.Screen, x, y, w, h int) {
 		if selected {
 			st = st.Background(palette.border).Bold(true)
 		}
-		mark := "○"
+		mark := "[ ]"
 		if item.Done {
-			mark = "●"
+			mark = "[x]"
 			st = st.Foreground(palette.muted)
 		} else {
 			st = st.Foreground(palette.text)
@@ -342,17 +351,17 @@ func drawBox(s tcell.Screen, x, y, w, h int, title string, active bool) {
 	}
 	st := tcell.StyleDefault.Background(palette.bg).Foreground(color)
 	for i := x + 1; i < x+w-1; i++ {
-		s.SetContent(i, y, '─', nil, st)
-		s.SetContent(i, y+h-1, '─', nil, st)
+		s.SetContent(i, y, '-', nil, st)
+		s.SetContent(i, y+h-1, '-', nil, st)
 	}
 	for i := y + 1; i < y+h-1; i++ {
-		s.SetContent(x, i, '│', nil, st)
-		s.SetContent(x+w-1, i, '│', nil, st)
+		s.SetContent(x, i, '|', nil, st)
+		s.SetContent(x+w-1, i, '|', nil, st)
 	}
-	s.SetContent(x, y, '╭', nil, st)
-	s.SetContent(x+w-1, y, '╮', nil, st)
-	s.SetContent(x, y+h-1, '╰', nil, st)
-	s.SetContent(x+w-1, y+h-1, '╯', nil, st)
+	s.SetContent(x, y, '+', nil, st)
+	s.SetContent(x+w-1, y, '+', nil, st)
+	s.SetContent(x, y+h-1, '+', nil, st)
+	s.SetContent(x+w-1, y+h-1, '+', nil, st)
 	put(s, x+2, y, title, st.Bold(true), w-4)
 }
 
@@ -366,17 +375,17 @@ func drawMiniBox(s tcell.Screen, x, y, w, h int, active bool) {
 	}
 	st := tcell.StyleDefault.Background(palette.bg).Foreground(color)
 	for i := x + 1; i < x+w-1; i++ {
-		s.SetContent(i, y, '─', nil, st)
-		s.SetContent(i, y+h-1, '─', nil, st)
+		s.SetContent(i, y, '-', nil, st)
+		s.SetContent(i, y+h-1, '-', nil, st)
 	}
 	for i := y + 1; i < y+h-1; i++ {
-		s.SetContent(x, i, '│', nil, st)
-		s.SetContent(x+w-1, i, '│', nil, st)
+		s.SetContent(x, i, '|', nil, st)
+		s.SetContent(x+w-1, i, '|', nil, st)
 	}
-	s.SetContent(x, y, '╭', nil, st)
-	s.SetContent(x+w-1, y, '╮', nil, st)
-	s.SetContent(x, y+h-1, '╰', nil, st)
-	s.SetContent(x+w-1, y+h-1, '╯', nil, st)
+	s.SetContent(x, y, '+', nil, st)
+	s.SetContent(x+w-1, y, '+', nil, st)
+	s.SetContent(x, y+h-1, '+', nil, st)
+	s.SetContent(x+w-1, y+h-1, '+', nil, st)
 }
 
 func metricColor(v float64) tcell.Color {
@@ -393,23 +402,46 @@ func bar(v float64, width int) string {
 	width = max(1, width)
 	v = min(100, maxFloat(0, v))
 	filled := int(v / 100 * float64(width))
-	return strings.Repeat("━", filled) + strings.Repeat("─", width-filled) + fmt.Sprintf(" %3.0f%%", v)
+	return strings.Repeat("#", filled) + strings.Repeat("-", width-filled) + fmt.Sprintf(" %3.0f%%", v)
 }
 
 func spark(values []float64, width int) string {
-	chars := []rune("▁▂▃▄▅▆▇█")
+	chars := []rune(" .:-=+*#%@")
 	if width < 1 {
 		return ""
 	}
 	if len(values) > width {
 		values = values[len(values)-width:]
 	}
-	out := strings.Repeat("▁", width-len(values))
+	out := strings.Repeat(" ", width-len(values))
 	for _, v := range values {
 		i := int(maxFloat(0, min(100, v)) / 100 * float64(len(chars)-1))
 		out += string(chars[i])
 	}
 	return out
+}
+
+func bytes(v uint64) string {
+	units := []string{"B", "K", "M", "G", "T"}
+	f := float64(v)
+	i := 0
+	for f >= 1024 && i < len(units)-1 {
+		f /= 1024
+		i++
+	}
+	return fmt.Sprintf("%.1f%s", f, units[i])
+}
+
+func uptime(seconds float64) string {
+	d := time.Duration(seconds) * time.Second
+	days := int(d.Hours()) / 24
+	if days > 0 {
+		return fmt.Sprintf("%dd%dh", days, int(d.Hours())%24)
+	}
+	if d.Hours() >= 1 {
+		return fmt.Sprintf("%dh%dm", int(d.Hours()), int(d.Minutes())%60)
+	}
+	return fmt.Sprintf("%dm", int(d.Minutes()))
 }
 
 func rate(v float64) string {
