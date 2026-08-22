@@ -179,8 +179,14 @@ func (a *app) draw(s tcell.Screen) {
 		a.drawWorkflows(s, leftW+1, contentY+1, rightW-1, contentH-2)
 	} else {
 		agentH := max(7, contentH/4)
-		serverH := max(10, contentH/2)
-		workflowH := contentH - agentH - serverH
+		if len(a.agents) == 0 {
+			agentH = 3
+		}
+		workflowH := 7
+		if contentH < 18 {
+			workflowH = 5
+		}
+		serverH := contentH - agentH - workflowH
 		drawBox(s, 0, contentY, w, agentH, " AI AGENTS ", a.focus == 0)
 		a.drawAgents(s, 1, contentY+1, w-2, agentH-2)
 		drawBox(s, 0, contentY+agentH, w, serverH, " SERVERS ", a.focus == 1)
@@ -220,9 +226,13 @@ func drawFooter(s tcell.Screen, w, h int, a *app) {
 func (a *app) drawAgents(s tcell.Screen, x, y, w, h int) {
 	style := tcell.StyleDefault.Background(palette.bg).Foreground(palette.text)
 	if len(a.agents) == 0 {
-		put(s, x+2, y+1, "No agents reporting yet", style.Foreground(palette.muted), w-4)
-		put(s, x+2, y+3, "Agents appear here when they write heartbeat JSON into:", style.Foreground(palette.muted), w-4)
-		put(s, x+2, y+4, a.cfg.AgentsDir, style.Foreground(palette.cyan), w-4)
+		if h >= 1 {
+			put(s, x+2, y, "No agents reporting yet", style.Foreground(palette.muted), w-4)
+		}
+		if h >= 4 {
+			put(s, x+2, y+2, "Agents appear here when they write heartbeat JSON into:", style.Foreground(palette.muted), w-4)
+			put(s, x+2, y+3, a.cfg.AgentsDir, style.Foreground(palette.cyan), w-4)
+		}
 		return
 	}
 	cardW := max(24, w/max(1, len(a.agents)))
@@ -278,12 +288,18 @@ func (a *app) drawServers(s tcell.Screen, x, y, w, h int) {
 			put(s, cx+2, cy+3, truncate(server.Error, cw-4), style.Foreground(palette.red), cw-4)
 			continue
 		}
-		put(s, cx+2, cy+2, truncate(fmt.Sprintf("%s / %s", server.Probe.OSName, server.Probe.Arch), cw-4), style.Foreground(palette.muted), cw-4)
-		put(s, cx+2, cy+3, truncate(server.Probe.CPUModel, cw-4), style.Foreground(palette.purple), cw-4)
-		put(s, cx+2, cy+4, truncate(fmt.Sprintf("%d threads | %s RAM", server.Probe.CPUThreads, bytes(server.Probe.MemoryTotal)), cw-4), style.Foreground(palette.cyan), cw-4)
-		put(s, cx+2, cy+5, truncate(fmt.Sprintf("%s disk | up %s", bytes(server.Probe.DiskTotal), uptime(server.Probe.UptimeSeconds)), cw-4), style.Foreground(palette.cyan), cw-4)
 		barW := max(5, cw-13)
-		if ch >= 11 {
+		if ch < 11 {
+			put(s, cx+2, cy+2, truncate(fmt.Sprintf("%s / %s", server.Probe.OSName, server.Probe.Arch), cw-4), style.Foreground(palette.muted), cw-4)
+			put(s, cx+2, cy+3, truncate(fmt.Sprintf("%dt R%s D%s U%s", server.Probe.CPUThreads, bytesCompact(server.Probe.MemoryTotal), bytesCompact(server.Probe.DiskTotal), uptime(server.Probe.UptimeSeconds)), cw-4), style.Foreground(palette.cyan), cw-4)
+			put(s, cx+2, cy+4, "CPU "+bar(server.Probe.CPUPercent, barW), style.Foreground(metricColor(server.Probe.CPUPercent)), cw-4)
+			put(s, cx+2, cy+5, "MEM "+bar(server.Probe.MemoryPercent, barW), style.Foreground(metricColor(server.Probe.MemoryPercent)), cw-4)
+			put(s, cx+2, cy+6, "DSK "+bar(server.Probe.DiskPercent, barW), style.Foreground(metricColor(server.Probe.DiskPercent)), cw-4)
+		} else {
+			put(s, cx+2, cy+2, truncate(fmt.Sprintf("%s / %s", server.Probe.OSName, server.Probe.Arch), cw-4), style.Foreground(palette.muted), cw-4)
+			put(s, cx+2, cy+3, truncate(server.Probe.CPUModel, cw-4), style.Foreground(palette.purple), cw-4)
+			put(s, cx+2, cy+4, truncate(fmt.Sprintf("%d threads | %s RAM", server.Probe.CPUThreads, bytes(server.Probe.MemoryTotal)), cw-4), style.Foreground(palette.cyan), cw-4)
+			put(s, cx+2, cy+5, truncate(fmt.Sprintf("%s disk | up %s", bytes(server.Probe.DiskTotal), uptime(server.Probe.UptimeSeconds)), cw-4), style.Foreground(palette.cyan), cw-4)
 			put(s, cx+2, cy+7, "CPU "+bar(server.Probe.CPUPercent, barW), style.Foreground(metricColor(server.Probe.CPUPercent)), cw-4)
 			put(s, cx+2, cy+8, "MEM "+bar(server.Probe.MemoryPercent, barW), style.Foreground(metricColor(server.Probe.MemoryPercent)), cw-4)
 			put(s, cx+2, cy+9, "DSK "+bar(server.Probe.DiskPercent, barW), style.Foreground(metricColor(server.Probe.DiskPercent)), cw-4)
@@ -430,6 +446,17 @@ func bytes(v uint64) string {
 		i++
 	}
 	return fmt.Sprintf("%.1f%s", f, units[i])
+}
+
+func bytesCompact(v uint64) string {
+	units := []string{"B", "K", "M", "G", "T"}
+	f := float64(v)
+	i := 0
+	for f >= 1024 && i < len(units)-1 {
+		f /= 1024
+		i++
+	}
+	return fmt.Sprintf("%.0f%s", f, units[i])
 }
 
 func uptime(seconds float64) string {
