@@ -6,6 +6,9 @@ the TUI and remote metrics probe; there is no web server or metrics database.
 
 ## Layout
 
+- **Overview page**: the original AI-agent, server, and workflow dashboard.
+- **Fleet page**: a full-screen server and container view. OpsDeck rotates between
+  pages every 20 seconds by default; `page_seconds` controls the interval.
 - **AI agents**: heartbeat cards read from `~/.local/state/opsdeck/agents/*.json`.
 - **Servers**: local or SSH CPU, memory, disk, network, container health, and small
   history graphs. HTTP-only services can be included as availability cards.
@@ -16,14 +19,16 @@ The layout switches from the sketch's two-column composition to stacked panels o
 smaller terminals. It follows btop's dense boxes, restrained theme, keyboard focus,
 and low-overhead native collection without copying btop source.
 
-All structural lines, usage bars, status marks, and history graphs use a straight
-ASCII symbol set so the interface renders consistently in Linux consoles, minimal
-terminal fonts, and SSH sessions. Color remains 24-bit when the terminal supports it.
+Structural lines use console-safe square box characters, with solid usage bars and
+high-contrast colors that remain readable on a physical Linux console. Color remains
+24-bit when the terminal supports it.
 
 ## Controls
 
 | Key | Action |
 | --- | --- |
+| `left` / `right`, `[` / `]` | Change page and reset its timer |
+| `p` | Pause or resume automatic page rotation |
 | `tab` / `shift-tab` | Change panel |
 | `j` / `k`, arrows | Move selection |
 | `space` | Toggle selected workflow |

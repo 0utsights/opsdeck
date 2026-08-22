@@ -9,6 +9,7 @@ import (
 
 type Config struct {
 	RefreshSeconds int            `json:"refresh_seconds"`
+	PageSeconds    int            `json:"page_seconds"`
 	Servers        []ServerConfig `json:"servers"`
 	AgentsDir      string         `json:"agents_dir"`
 	WorkflowsFile  string         `json:"workflows_file"`
@@ -56,6 +57,9 @@ func loadConfig(path string) (Config, error) {
 	}
 	if cfg.RefreshSeconds < 1 {
 		cfg.RefreshSeconds = 3
+	}
+	if cfg.PageSeconds < 1 {
+		cfg.PageSeconds = 20
 	}
 	cfg.AgentsDir = expandHome(cfg.AgentsDir)
 	cfg.WorkflowsFile = expandHome(cfg.WorkflowsFile)

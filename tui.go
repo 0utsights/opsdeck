@@ -25,6 +25,20 @@ type app struct {
 	message       string
 	lastRefresh   time.Time
 	refreshActive bool
+	pageIndex     int
+	pagePaused    bool
+	pageChangedAt time.Time
+}
+
+type pageDefinition struct {
+	name  string
+	focus int
+	draw  func(*app, tcell.Screen, int, int)
+}
+
+var pageDefinitions = []pageDefinition{
+	{name: "OVERVIEW", focus: -1, draw: drawOverviewPage},
+	{name: "FLEET", focus: 1, draw: drawFleetPage},
 }
 
 var palette = struct {
@@ -38,7 +52,38 @@ var palette = struct {
 }
 
 func newApp(cfg Config) *app {
-	return &app{cfg: cfg, workflows: loadWorkflows(cfg.WorkflowsFile)}
+	return &app{cfg: cfg, workflows: loadWorkflows(cfg.WorkflowsFile), pageChangedAt: time.Now()}
+}
+
+func (a *app) setPage(index int, now time.Time) {
+	if len(pageDefinitions) == 0 {
+		return
+	}
+	a.pageIndex = (index%len(pageDefinitions) + len(pageDefinitions)) % len(pageDefinitions)
+	if pageDefinitions[a.pageIndex].focus >= 0 {
+		a.focus = pageDefinitions[a.pageIndex].focus
+	}
+	a.pageChangedAt = now
+}
+
+func (a *app) maybeRotatePage(now time.Time) bool {
+	if a.pagePaused || a.adding || len(pageDefinitions) < 2 {
+		return false
+	}
+	interval := time.Duration(a.cfg.PageSeconds) * time.Second
+	if now.Sub(a.pageChangedAt) < interval {
+		return false
+	}
+	a.setPage(a.pageIndex+1, now)
+	return true
+}
+
+func (a *app) pageRemaining(now time.Time) int {
+	remaining := time.Duration(a.cfg.PageSeconds)*time.Second - now.Sub(a.pageChangedAt)
+	if remaining <= 0 {
+		return 0
+	}
+	return int((remaining + time.Second - 1) / time.Second)
 }
 
 func (a *app) refresh(ctx context.Context) {
@@ -73,6 +118,7 @@ func (a *app) refresh(ctx context.Context) {
 }
 
 func (a *app) handleKey(e *tcell.EventKey) bool {
+	a.pageChangedAt = time.Now()
 	if a.adding {
 		switch e.Key() {
 		case tcell.KeyEscape:
@@ -108,12 +154,26 @@ func (a *app) handleKey(e *tcell.EventKey) bool {
 		a.move(-1)
 	case tcell.KeyDown:
 		a.move(1)
+	case tcell.KeyLeft:
+		a.setPage(a.pageIndex-1, time.Now())
+	case tcell.KeyRight:
+		a.setPage(a.pageIndex+1, time.Now())
 	}
 	switch e.Rune() {
 	case 'j':
 		a.move(1)
 	case 'k':
 		a.move(-1)
+	case '[':
+		a.setPage(a.pageIndex-1, time.Now())
+	case ']':
+		a.setPage(a.pageIndex+1, time.Now())
+	case 'p':
+		a.pagePaused = !a.pagePaused
+		a.message = "page rotation resumed"
+		if a.pagePaused {
+			a.message = "page rotation paused"
+		}
 	case 'a':
 		if a.focus == 2 {
 			a.adding = true
@@ -167,6 +227,13 @@ func (a *app) draw(s tcell.Screen) {
 
 	drawHeader(s, w, a)
 	contentY, contentH := 2, h-4
+	pageDefinitions[a.pageIndex].draw(a, s, contentY, contentH)
+	drawFooter(s, w, h, a)
+	s.Show()
+}
+
+func drawOverviewPage(a *app, s tcell.Screen, contentY, contentH int) {
+	w, _ := s.Size()
 	if w >= 108 {
 		rightW := clamp(w/3, 32, 44)
 		leftW := w - rightW - 1
@@ -197,8 +264,12 @@ func (a *app) draw(s tcell.Screen) {
 		drawBox(s, 0, contentY+agentH+serverH, w, workflowH, " WORKFLOWS ", a.focus == 2)
 		a.drawWorkflows(s, 1, contentY+agentH+serverH+1, w-2, workflowH-2)
 	}
-	drawFooter(s, w, h, a)
-	s.Show()
+}
+
+func drawFleetPage(a *app, s tcell.Screen, contentY, contentH int) {
+	w, _ := s.Size()
+	drawBox(s, 0, contentY, w, contentH, " SERVER FLEET ", true)
+	a.drawServers(s, 1, contentY+1, w-2, contentH-2)
 }
 
 func drawHeader(s tcell.Screen, w int, a *app) {
@@ -210,14 +281,25 @@ func drawHeader(s tcell.Screen, w int, a *app) {
 			online++
 		}
 	}
-	put(s, 14, 0, fmt.Sprintf("%d/%d servers  |  %d agents", online, len(a.servers), len(a.agents)), style.Foreground(palette.muted), w-38)
 	clock := time.Now().Format("Mon 15:04:05")
+	rotation := fmt.Sprintf("%ds", a.pageRemaining(time.Now()))
+	if a.pagePaused {
+		rotation = "PAUSED"
+	}
+	page := pageDefinitions[a.pageIndex]
+	pageLabel := fmt.Sprintf("%d/%d %s %s", a.pageIndex+1, len(pageDefinitions), page.name, rotation)
+	pageX := w - len(clock) - len(pageLabel) - 5
+	put(s, 14, 0, fmt.Sprintf("%d/%d servers  |  %d agents", online, len(a.servers), len(a.agents)), style.Foreground(palette.muted), max(0, pageX-15))
+	put(s, pageX, 0, pageLabel, style.Foreground(palette.cyan), len(pageLabel))
 	put(s, w-len(clock)-2, 0, clock, style.Foreground(palette.purple), len(clock))
 }
 
 func drawFooter(s tcell.Screen, w, h int, a *app) {
 	style := tcell.StyleDefault.Background(palette.bg).Foreground(palette.muted)
-	hint := "[tab] panel  [j/k] move  [space] toggle  [a] add workflow  [q] quit"
+	hint := "[left/right] page  [p] pause  [tab] panel  [j/k] move  [space] toggle  [a] add workflow  [q] quit"
+	if w < 120 {
+		hint = "[←/→] page  [p] pause  [tab] panel  [j/k] move  [q] quit"
+	}
 	if a.adding {
 		hint = "new workflow › " + a.input + "█   [enter] save  [esc] cancel"
 	} else if a.message != "" {

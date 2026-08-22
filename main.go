@@ -73,6 +73,8 @@ func main() {
 	}()
 	ticker := time.NewTicker(time.Duration(cfg.RefreshSeconds) * time.Second)
 	defer ticker.Stop()
+	pageTicker := time.NewTicker(time.Second)
+	defer pageTicker.Stop()
 	app.draw(screen)
 
 	for {
@@ -81,6 +83,9 @@ func main() {
 			return
 		case <-ticker.C:
 			app.refresh(ctx)
+			app.draw(screen)
+		case now := <-pageTicker.C:
+			app.maybeRotatePage(now)
 			app.draw(screen)
 		case ev := <-events:
 			switch e := ev.(type) {

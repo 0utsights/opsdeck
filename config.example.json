@@ -1,5 +1,6 @@
 {
   "refresh_seconds": 3,
+  "page_seconds": 20,
   "agents_dir": "~/.local/state/opsdeck/agents",
   "workflows_file": "~/.local/state/opsdeck/workflows.json",
   "servers": [
