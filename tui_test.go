@@ -7,7 +7,7 @@ import (
 
 func TestBarHasStableWidth(t *testing.T) {
 	got := bar(50, 10)
-	if !strings.HasPrefix(got, "#####-----") || !strings.HasSuffix(got, "  50%") {
+	if !strings.HasPrefix(got, "█████─────") || !strings.HasSuffix(got, "  50%") {
 		t.Fatalf("unexpected bar: %q", got)
 	}
 }

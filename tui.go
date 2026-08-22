@@ -274,9 +274,9 @@ func (a *app) drawServers(s tcell.Screen, x, y, w, h int) {
 		cw, ch := min(cardW-1, x+w-cx), min(cardH, y+h-cy)
 		selected := a.focus == 1 && i == a.serverSel
 		drawMiniBox(s, cx, cy, cw, ch, selected)
-		color, dot := palette.green, "+"
+		color, dot := palette.green, "●"
 		if !server.Online {
-			color, dot = palette.red, "x"
+			color, dot = palette.red, "×"
 		}
 		put(s, cx+2, cy+1, dot+" "+truncate(server.Config.Name, cw-6), style.Foreground(color).Bold(true), cw-4)
 		if server.Config.Kind == "http" {
@@ -367,17 +367,17 @@ func drawBox(s tcell.Screen, x, y, w, h int, title string, active bool) {
 	}
 	st := tcell.StyleDefault.Background(palette.bg).Foreground(color)
 	for i := x + 1; i < x+w-1; i++ {
-		s.SetContent(i, y, '-', nil, st)
-		s.SetContent(i, y+h-1, '-', nil, st)
+		s.SetContent(i, y, '─', nil, st)
+		s.SetContent(i, y+h-1, '─', nil, st)
 	}
 	for i := y + 1; i < y+h-1; i++ {
-		s.SetContent(x, i, '|', nil, st)
-		s.SetContent(x+w-1, i, '|', nil, st)
+		s.SetContent(x, i, '│', nil, st)
+		s.SetContent(x+w-1, i, '│', nil, st)
 	}
-	s.SetContent(x, y, '+', nil, st)
-	s.SetContent(x+w-1, y, '+', nil, st)
-	s.SetContent(x, y+h-1, '+', nil, st)
-	s.SetContent(x+w-1, y+h-1, '+', nil, st)
+	s.SetContent(x, y, '┌', nil, st)
+	s.SetContent(x+w-1, y, '┐', nil, st)
+	s.SetContent(x, y+h-1, '└', nil, st)
+	s.SetContent(x+w-1, y+h-1, '┘', nil, st)
 	put(s, x+2, y, title, st.Bold(true), w-4)
 }
 
@@ -391,17 +391,17 @@ func drawMiniBox(s tcell.Screen, x, y, w, h int, active bool) {
 	}
 	st := tcell.StyleDefault.Background(palette.bg).Foreground(color)
 	for i := x + 1; i < x+w-1; i++ {
-		s.SetContent(i, y, '-', nil, st)
-		s.SetContent(i, y+h-1, '-', nil, st)
+		s.SetContent(i, y, '─', nil, st)
+		s.SetContent(i, y+h-1, '─', nil, st)
 	}
 	for i := y + 1; i < y+h-1; i++ {
-		s.SetContent(x, i, '|', nil, st)
-		s.SetContent(x+w-1, i, '|', nil, st)
+		s.SetContent(x, i, '│', nil, st)
+		s.SetContent(x+w-1, i, '│', nil, st)
 	}
-	s.SetContent(x, y, '+', nil, st)
-	s.SetContent(x+w-1, y, '+', nil, st)
-	s.SetContent(x, y+h-1, '+', nil, st)
-	s.SetContent(x+w-1, y+h-1, '+', nil, st)
+	s.SetContent(x, y, '┌', nil, st)
+	s.SetContent(x+w-1, y, '┐', nil, st)
+	s.SetContent(x, y+h-1, '└', nil, st)
+	s.SetContent(x+w-1, y+h-1, '┘', nil, st)
 }
 
 func metricColor(v float64) tcell.Color {
@@ -418,7 +418,7 @@ func bar(v float64, width int) string {
 	width = max(1, width)
 	v = min(100, maxFloat(0, v))
 	filled := int(v / 100 * float64(width))
-	return strings.Repeat("#", filled) + strings.Repeat("-", width-filled) + fmt.Sprintf(" %3.0f%%", v)
+	return strings.Repeat("█", filled) + strings.Repeat("─", width-filled) + fmt.Sprintf(" %3.0f%%", v)
 }
 
 func spark(values []float64, width int) string {
