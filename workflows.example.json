@@ -1,0 +1,18 @@
+{
+  "items": [
+    {
+      "id": "verify-backups",
+      "title": "Verify nightly backups",
+      "done": false,
+      "owner": "ops",
+      "status": "active"
+    },
+    {
+      "id": "review-capacity",
+      "title": "Review server capacity",
+      "done": false,
+      "owner": "ops",
+      "status": "queued"
+    }
+  ]
+}

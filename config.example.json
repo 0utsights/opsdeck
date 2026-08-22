@@ -1,0 +1,28 @@
+{
+  "refresh_seconds": 3,
+  "agents_dir": "~/.local/state/opsdeck/agents",
+  "workflows_file": "~/.local/state/opsdeck/workflows.json",
+  "servers": [
+    {
+      "id": "local",
+      "name": "LOCAL HOST",
+      "kind": "local"
+    },
+    {
+      "id": "remote-vps",
+      "name": "REMOTE VPS",
+      "kind": "ssh",
+      "address": "server.example.com",
+      "user": "ubuntu",
+      "identity_file": "~/.ssh/opsdeck_probe",
+      "probe_path": "/usr/local/bin/opsdeck",
+      "sudo": true
+    },
+    {
+      "id": "public-service",
+      "name": "PUBLIC SERVICE",
+      "kind": "http",
+      "url": "https://example.com/health"
+    }
+  ]
+}

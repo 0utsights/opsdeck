@@ -1,0 +1,7 @@
+/dist/
+/opsdeck
+/opsdeck.exe
+/config.json
+/.idea/
+/.vscode/
+*.log
