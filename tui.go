@@ -417,17 +417,19 @@ func (a *app) drawServers(s tcell.Screen, x, y, w, h int) {
 		if ch >= 14 {
 			put(s, cx+2, cy+12, "mem "+spark(server.MemHistory, max(4, cw-8)), style.Foreground(palette.purple), cw-4)
 		}
-		if ch >= 15 {
-			healthy := 0
-			for _, c := range server.Probe.Containers {
-				if c.Health != "unhealthy" {
-					healthy++
-				}
+		healthy := 0
+		for _, c := range server.Probe.Containers {
+			if c.Health != "unhealthy" && !strings.Contains(strings.ToLower(c.Status), "exited") {
+				healthy++
 			}
-			put(s, cx+2, cy+13, fmt.Sprintf("%d/%d containers", healthy, len(server.Probe.Containers)), style.Foreground(palette.muted), cw-4)
+		}
+		if ch >= 15 {
+			put(s, cx+2, cy+13, "NETWORK", style.Foreground(palette.cyan).Bold(true), cw-4)
 		}
 		if ch >= 16 {
-			put(s, cx+2, cy+14, fmt.Sprintf("tx %s | rx %s", rate(server.Probe.NetTxBytesSec), rate(server.Probe.NetRxBytesSec)), style.Foreground(palette.muted), cw-4)
+			columnWidth := max(1, (cw-4)/2)
+			put(s, cx+2, cy+14, fmt.Sprintf("TX  %s", rate(server.Probe.NetTxBytesSec)), style.Foreground(palette.yellow), columnWidth)
+			put(s, cx+2+columnWidth, cy+14, fmt.Sprintf("RX  %s", rate(server.Probe.NetRxBytesSec)), style.Foreground(palette.cyan), cw-4-columnWidth)
 		}
 		nextRow := 16
 		hostedSites := a.sitesOnServer(server)
@@ -451,7 +453,7 @@ func (a *app) drawServers(s tcell.Screen, x, y, w, h int) {
 			nextRow += limit + 1
 		}
 		if ch > nextRow+2 && len(server.Probe.Containers) > 0 {
-			put(s, cx+2, cy+nextRow, "CONTAINERS", style.Foreground(palette.cyan).Bold(true), cw-4)
+			put(s, cx+2, cy+nextRow, fmt.Sprintf("CONTAINERS  %d/%d", healthy, len(server.Probe.Containers)), style.Foreground(palette.cyan).Bold(true), cw-4)
 			nextRow++
 			limit := min(len(server.Probe.Containers), ch-nextRow-1)
 			for j := 0; j < limit; j++ {
@@ -575,7 +577,7 @@ func bar(v float64, width int) string {
 	width = max(1, width)
 	v = min(100, maxFloat(0, v))
 	filled := int(v / 100 * float64(width))
-	return strings.Repeat("█", filled) + strings.Repeat("─", width-filled) + fmt.Sprintf(" %3.0f%%", v)
+	return strings.Repeat("━", filled) + strings.Repeat("─", width-filled) + fmt.Sprintf(" %3.0f%%", v)
 }
 
 func spark(values []float64, width int) string {
